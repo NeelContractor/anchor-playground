@@ -1,0 +1,271 @@
+import { create, StateCreator } from "zustand";
+import { Program, Idl, AnchorProvider } from "@coral-xyz/anchor";
+import { Connection, Commitment, Cluster } from "@solana/web3.js";
+import { AnchorWallet } from "@jup-ag/wallet-adapter";
+import { persist } from "zustand/middleware";
+import { IdlType } from "@coral-xyz/anchor/dist/cjs/idl";
+import { createDummyWallet } from "@/utils/dummyWallet";
+
+type AnyProgram = Program<Idl>;
+type CommitmentLevel = Commitment;
+
+export interface IdlTypeDef {
+  name: string;
+  type: {
+    kind: "struct" | "enum";
+    fields?: Array<{ name: string; type: IdlType }>;
+    variants?: Array<{ name: string; fields?: IdlType[] }>;
+  };
+  docs?: string[];
+}
+
+export interface ProgramDetails {
+  programId: string;
+  name: string;
+  rpcUrl: string;
+  cluster: Cluster | string;
+  commitment: CommitmentLevel;
+  initializedAt: number;
+  serializedIdl: string;
+  types: IdlTypeDef[];
+}
+
+interface ProgramError {
+  name: string;
+  message: string;
+  stack?: string;
+}
+
+export interface ProgramState {
+  program: AnyProgram | null;
+  provider: AnchorProvider | null;
+  connection: Connection | null;
+  isInitialized: boolean;
+  isReinitializing: boolean;
+  error: ProgramError | null;
+  programDetails: ProgramDetails | null;
+  initialize: (
+    idl: Idl,
+    rpcUrl: string,
+    wallet?: AnchorWallet | null,
+    commitment?: CommitmentLevel
+  ) => Promise<AnyProgram | null>;
+  reinitialize: (wallet: AnchorWallet) => Promise<AnyProgram | null>;
+  updateRpcUrl: (rpcUrl: string, wallet: AnchorWallet) => Promise<boolean>;
+  reset: () => void;
+}
+
+const DEFAULT_COMMITMENT: CommitmentLevel = "confirmed";
+const CONNECTION_CONFIG = {
+  commitment: DEFAULT_COMMITMENT,
+  confirmTransactionInitialTimeout: 30000,
+};
+
+function detectCluster(rpcUrl: string): Cluster | string {
+  const url = rpcUrl.toLowerCase();
+  
+  // Check in order of specificity to avoid false matches
+  if (url.includes("devnet")) return "devnet";
+  if (url.includes("testnet")) return "testnet";
+  if (url.includes("mainnet-beta") || url.includes("mainnet")) return "mainnet-beta";
+  if (url.includes("localhost") || url.includes("127.0.0.1")) return "localnet";
+  
+  return "custom";
+}
+
+function createErrorObject(error: unknown, defaultName: string): ProgramError {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+  return {
+    name: defaultName,
+    message: typeof error === "string" ? error : String(error),
+  };
+}
+
+type PersistedState = Pick<ProgramState, "programDetails" | "isInitialized">;
+
+const useProgramStore = create<ProgramState>()(
+  persist(
+    (set, get) => ({
+      program: null,
+      provider: null,
+      connection: null,
+      isInitialized: false,
+      isReinitializing: false,
+      error: null,
+      programDetails: null,
+
+      initialize: async (
+        idl: Idl,
+        rpcUrl: string,
+        wallet: AnchorWallet | null = null,
+        commitment: CommitmentLevel = DEFAULT_COMMITMENT
+      ): Promise<AnyProgram | null> => {
+        try {
+          set({
+            error: null,
+            isInitialized: false,
+            program: null,
+            provider: null,
+            connection: null,
+            programDetails: null,
+          });
+
+          const connection = new Connection(rpcUrl, CONNECTION_CONFIG);
+          // Use dummy wallet if no wallet provided (for read-only initialization)
+          const walletToUse = wallet || createDummyWallet();
+          const provider = new AnchorProvider(connection, walletToUse, {
+            preflightCommitment: commitment,
+            commitment,
+          });
+          const program = new Program(idl, provider);
+
+          const programDetails: ProgramDetails = {
+            programId: program.programId.toString(),
+            name: idl.metadata?.name || "Anchor Program",
+            rpcUrl,
+            cluster: detectCluster(rpcUrl),
+            commitment,
+            initializedAt: Date.now(),
+            serializedIdl: JSON.stringify(idl),
+            types: (idl.types
+              ? JSON.parse(JSON.stringify(idl.types))
+              : []) as IdlTypeDef[],
+          };
+
+          set({
+            isInitialized: true,
+            program,
+            provider,
+            connection,
+            programDetails,
+          });
+
+          return program;
+        } catch (error) {
+          const errorObj = createErrorObject(error, "InitializationError");
+          console.error("✗ Program initialization failed:", errorObj);
+          set({
+            error: errorObj,
+            isInitialized: false,
+            program: null,
+            provider: null,
+            connection: null,
+            programDetails: null,
+          });
+          throw new Error(errorObj.message);
+        }
+      },
+
+      reinitialize: async (wallet: AnchorWallet) => {
+        const { programDetails, isReinitializing } = get();
+
+        if (!programDetails) {
+          console.warn("⚠ No program details found for reinitialization");
+          return null;
+        }
+
+        if (isReinitializing) {
+          console.warn("⚠ Reinitialization already in progress");
+          return null;
+        }
+
+        try {
+          set({ isReinitializing: true });
+
+          const idl: Idl = JSON.parse(programDetails.serializedIdl);
+          const program = await get().initialize(
+            idl,
+            programDetails.rpcUrl,
+            wallet,
+            programDetails.commitment
+          );
+
+          return program;
+        } catch (error) {
+          const errorObj = createErrorObject(error, "ReinitializationError");
+          console.error("✗ Reinitialization failed:", errorObj);
+          get().reset();
+          set({ error: errorObj });
+          throw new Error(errorObj.message);
+        } finally {
+          set({ isReinitializing: false });
+        }
+      },
+
+      updateRpcUrl: async (rpcUrl: string, wallet: AnchorWallet): Promise<boolean> => {
+        const { programDetails } = get();
+
+        if (!programDetails) {
+          console.warn("⚠ No program details found for RPC update");
+          return false;
+        }
+
+        if (programDetails.rpcUrl === rpcUrl) {
+          return true;
+        }
+
+        try {
+
+          const idl: Idl = JSON.parse(programDetails.serializedIdl);
+          const connection = new Connection(rpcUrl, {
+            ...CONNECTION_CONFIG,
+            commitment: programDetails.commitment,
+          });
+          
+          const provider = new AnchorProvider(connection, wallet, {
+            preflightCommitment: programDetails.commitment,
+            commitment: programDetails.commitment,
+          });
+          
+          const program = new Program(idl, provider);
+
+          const updatedDetails: ProgramDetails = {
+            ...programDetails,
+            rpcUrl,
+            cluster: detectCluster(rpcUrl),
+          };
+
+          set({
+            program,
+            provider,
+            connection,
+            programDetails: updatedDetails,
+          });
+
+          return true;
+        } catch (error) {
+          const errorObj = createErrorObject(error, "RpcUpdateError");
+          console.error("✗ RPC update failed:", errorObj);
+          set({ error: errorObj });
+          return false;
+        }
+      },
+
+      reset: () => {
+        set({
+          isInitialized: false,
+          program: null,
+          provider: null,
+          connection: null,
+          programDetails: null,
+          error: null,
+        });
+      },
+    }),
+    {
+      name: "anchor-playground",
+      partialize: (state: ProgramState): PersistedState => ({
+        programDetails: state.programDetails,
+        isInitialized: state.isInitialized,
+      }),
+    }
+  ) as unknown as StateCreator<ProgramState, [], [never, unknown][]>
+);
+
+export default useProgramStore;

@@ -1,0 +1,250 @@
+"use client";
+
+import { AccountData } from "@/components/AccountTable";
+import ProgramNotFound from "@/components/ProgramNotFound";
+import { Spinner } from "@/components/ui/8bit/spinner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAccountData } from "@/hooks/useAccountData";
+import { useAutoReinitialize } from "@/hooks/useAutoReinitialize";
+import useProgramStore from "@/stores/programStore";
+import { IdlAccount } from "@coral-xyz/anchor/dist/cjs/idl";
+import { useAnchorWallet } from "@solana/wallet-adapter-react";
+import { motion } from "framer-motion";
+import { AlertCircle, Database, Inbox, RefreshCw, LayoutGrid } from "lucide-react";
+import dynamic from "next/dynamic";
+import { useMemo, useState } from "react";
+import { syne } from "@/fonts/fonts";
+
+const AccountView = dynamic(
+  () => import("@/components/AccountView").then((mod) => mod.AccountView),
+  {
+    ssr: false,
+    loading: () => null,
+  }
+);
+
+function AccountTabContent({
+  account,
+  isActive,
+}: {
+  account: IdlAccount;
+  isActive: boolean;
+}) {
+  const { program } = useProgramStore();
+  const {
+    data: accountsData,
+    isLoading,
+    error,
+    refetch,
+  } = useAccountData(
+    program!,
+    account.name as never,
+    { enabled: isActive && !!program }
+  );
+
+  const accountType = useMemo(
+    () => program?.idl?.types?.find((type) => type.name === account.name),
+    [program, account]
+  );
+
+  const transformedData: AccountData[] = useMemo(
+    () =>
+      accountsData?.map((item) => ({
+        publicKey: item.publicKey.toString(),
+        account: item.account as Record<string, unknown>,
+      })) ?? [],
+    [accountsData]
+  );
+
+  if (!program) {
+    return null;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 p-12">
+        <Spinner className="h-12 w-12" />
+        <p className="text-muted-foreground">Loading accounts...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    const errorMsg = error?.message || "";
+    if (
+      errorMsg.includes("ERR_BLOCKED_BY_CLIENT") ||
+      errorMsg.includes("Failed to fetch")
+    ) {
+      return (
+        <div className="p-4 text-red-500">
+          Your browser is blocking requests to the URL required to fetch account
+          data. This is often caused by an ad blocker, browser extension, or
+          network policy. Please whitelist this site or disable the extension
+          for this page.
+          <br />
+          <span className="text-xs break-all">{errorMsg}</span>
+        </div>
+      );
+    }
+    return (
+      <div className="p-4 text-red-500">
+        Error fetching accounts: {errorMsg}
+      </div>
+    );
+  }
+
+  if (!accountType) {
+    return (
+      <div className="p-4 text-orange-500">
+        Could not find type definition for account: {account.name}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <AccountView data={transformedData} accountType={accountType} onRefresh={refetch} />
+    </div>
+  );
+}
+
+export default function AccountsPage() {
+  const programStoreState = useProgramStore((state) => state);
+  const { program, programDetails, error } = programStoreState;
+  const wallet = useAnchorWallet();
+  useAutoReinitialize(wallet);
+
+  const accounts = useMemo(() => program?.idl?.accounts || [], [program]);
+  const [activeTab, setActiveTab] = useState(accounts[0]?.name ?? "");
+
+  if (error) {
+    return (
+      <div className="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="ml-2">
+            <div className="font-medium mb-1">Program Initialization Failed</div>
+            <div className="text-sm opacity-90">{error.message}</div>
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  if (!program || !programDetails) {
+    return <ProgramNotFound />;
+  }
+
+  if (accounts.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8"
+      >
+        <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed rounded-xl bg-muted/20">
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{
+              delay: 0.2,
+              type: "spring",
+              stiffness: 200,
+              damping: 15,
+            }}
+            className="rounded-full bg-muted p-4 mb-4"
+          >
+            <Inbox className="h-8 w-8 text-muted-foreground" />
+          </motion.div>
+          <h2 className="text-xl font-semibold mb-2">
+            No Account Types Defined
+          </h2>
+          <p className="text-muted-foreground text-center max-w-md">
+            This program doesn&lsquo;t define any account types in its IDL.
+            Account types are required to store and query on-chain data.
+          </p>
+        </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4 }}
+      className="w-full h-full p-4 sm:p-6 lg:p-8 overflow-auto bg-gradient-to-b from-background via-background to-muted/20"
+    >
+      <div className="space-y-8">
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="flex items-center gap-4"
+        >
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{
+              delay: 0.2,
+              type: "spring",
+              stiffness: 200,
+              damping: 15,
+            }}
+            className="flex-shrink-0 flex items-center justify-center w-14 h-14 rounded-xl bg-primary/10 border-2 border-primary/20"
+          >
+            <LayoutGrid className="h-7 w-7 text-primary" />
+          </motion.div>
+          <div>
+            <h1 className={`${syne} text-2xl sm:text-3xl lg:text-4xl font-bold mb-2`}>
+              Accounts
+            </h1>
+            <p className="text-sm sm:text-base text-muted-foreground">
+              View and explore on-chain account data for {programDetails.name || "this program"}
+            </p>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+        >
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <div className="overflow-x-auto pb-2 -mx-1 px-1">
+              <TabsList className="inline-flex h-12 items-center justify-start rounded-xl bg-background/80 backdrop-blur-md border border-border/50 shadow-xl p-1.5 w-auto min-w-full sm:min-w-0">
+                {accounts.map((account, index) => (
+                  <motion.div
+                    key={account.name}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 + index * 0.05 }}
+                  >
+                    <TabsTrigger
+                      value={account.name}
+                      className="text-sm font-semibold px-5 py-2.5 whitespace-nowrap data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:backdrop-blur-sm data-[state=active]:outline-1 data-[state=active]:outline-primary/20 data-[state=active]:shadow-sm data-[state=inactive]:hover:bg-primary/5 data-[state=inactive]:hover:backdrop-blur-sm rounded-lg transition-all duration-200"
+                    >
+                      {account.name}
+                    </TabsTrigger>
+                  </motion.div>
+                ))}
+              </TabsList>
+            </div>
+
+            {accounts.map((account) => (
+              <TabsContent key={account.name} value={account.name}>
+                <AccountTabContent
+                  account={account}
+                  isActive={activeTab === account.name}
+                />
+              </TabsContent>
+            ))}
+          </Tabs>
+        </motion.div>
+      </div>
+    </motion.div>
+  );
+}
