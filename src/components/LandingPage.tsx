@@ -403,49 +403,6 @@ export default function LandingPage() {
                 </div>
                 <span className={`${syne} text-2xl font-bold`}>AnchorPlayground</span>
               </div>
-              {/* <div className="text-xs sm:text-sm text-muted-foreground">
-                A project by{" "}
-                <a 
-                  href="https://AnchorPlayground.xyz" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="font-semibold text-foreground hover:text-primary transition-colors"
-                >
-                  AnchorPlayground
-                </a>
-              </div> */}
-            </div>
-            
-            <div className="flex items-center gap-4">
-              {/* <a
-                href="https://github.com/AnchorPlayground/anchorlabs"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Github className="h-5 w-5" />
-                <span className="hidden sm:inline">GitHub</span>
-              </a> */}
-              {/* <a
-                href="https://x.com/AnchorPlayground"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-label="X logo">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                </svg>
-                <span className="hidden sm:inline">X</span>
-              </a> */}
-              {/* <a
-                href="https://AnchorPlayground.xyz"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <ExternalLink className="h-5 w-5" />
-                <span className="hidden sm:inline">AnchorPlayground</span>
-              </a> */}
             </div>
           </div>
         
@@ -453,9 +410,8 @@ export default function LandingPage() {
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
               <p>Built for Solana developers. Open source and free to use.</p>
               <p>
-                {/* Powered by{" "} */}
                 <a 
-                  href="" 
+                  href="/" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="font-semibold text-foreground hover:text-primary transition-colors"

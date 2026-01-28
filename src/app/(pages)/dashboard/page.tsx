@@ -82,68 +82,68 @@ export default function Dashboard() {
     router.push("/?setup=true");
   };
 
-  const handleSubmitFeedback = async () => {
-    if (!feedback.trim()) {
-      return;
-    }
+  // const handleSubmitFeedback = async () => {
+  //   if (!feedback.trim()) {
+  //     return;
+  //   }
 
-    setIsSubmittingFeedback(true);
+  //   setIsSubmittingFeedback(true);
     
-    try {
-      const response = await fetch("/api/feedback", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          feedback: feedback.trim(),
-          feedbackType,
-          programName: programDetails?.name,
-          programId: programDetails?.programId,
-        }),
-      });
+  //   try {
+  //     const response = await fetch("/api/feedback", {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //       },
+  //       body: JSON.stringify({
+  //         feedback: feedback.trim(),
+  //         feedbackType,
+  //         programName: programDetails?.name,
+  //         programId: programDetails?.programId,
+  //       }),
+  //     });
 
-      const data = await response.json();
+  //     const data = await response.json();
 
-      if (!response.ok) {
-        // If email service is not configured, fall back to mailto
-        if (data.fallback) {
-          const subject = encodeURIComponent(
-            `[AnchorPlayground Feedback] ${feedbackType.toUpperCase()}: ${programDetails?.name || "General"}`
-          );
-          const body = encodeURIComponent(
-            `Feedback Type: ${feedbackType}\n\nFeedback:\n${feedback}\n\nProgram: ${programDetails?.name || "N/A"}\nProgram ID: ${programDetails?.programId || "N/A"}`
-          );
-          window.location.href = `mailto:feedback@solixdb.xyz?subject=${subject}&body=${body}`;
+  //     if (!response.ok) {
+  //       // If email service is not configured, fall back to mailto
+  //       if (data.fallback) {
+  //         const subject = encodeURIComponent(
+  //           `[AnchorPlayground Feedback] ${feedbackType.toUpperCase()}: ${programDetails?.name || "General"}`
+  //         );
+  //         const body = encodeURIComponent(
+  //           `Feedback Type: ${feedbackType}\n\nFeedback:\n${feedback}\n\nProgram: ${programDetails?.name || "N/A"}\nProgram ID: ${programDetails?.programId || "N/A"}`
+  //         );
+  //         window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
           
-          toast.success("Opening email client", {
-            description: "Please send the email to submit your feedback.",
-          });
-        } else {
-          // Show the error message from the API
-          const errorMessage = data.error || "Failed to send feedback";
-          throw new Error(errorMessage);
-        }
-      } else {
-        // Success
-        toast.success("Feedback sent!", {
-          description: "Thank you for your feedback. We'll get back to you soon.",
-        });
-      }
+  //         toast.success("Opening email client", {
+  //           description: "Please send the email to submit your feedback.",
+  //         });
+  //       } else {
+  //         // Show the error message from the API
+  //         const errorMessage = data.error || "Failed to send feedback";
+  //         throw new Error(errorMessage);
+  //       }
+  //     } else {
+  //       // Success
+  //       toast.success("Feedback sent!", {
+  //         description: "Thank you for your feedback. We'll get back to you soon.",
+  //       });
+  //     }
 
-      // Reset form
-      setFeedback("");
-      setFeedbackType("general");
-      setShowFeedbackDialog(false);
-    } catch (error) {
-      console.error("Error submitting feedback:", error);
-      toast.error("Failed to send feedback", {
-        description: error instanceof Error ? error.message : "Please try again later.",
-      });
-    } finally {
-      setIsSubmittingFeedback(false);
-    }
-  };
+  //     // Reset form
+  //     setFeedback("");
+  //     setFeedbackType("general");
+  //     setShowFeedbackDialog(false);
+  //   } catch (error) {
+  //     console.error("Error submitting feedback:", error);
+  //     toast.error("Failed to send feedback", {
+  //       description: error instanceof Error ? error.message : "Please try again later.",
+  //     });
+  //   } finally {
+  //     setIsSubmittingFeedback(false);
+  //   }
+  // };
 
   if (!programDetails) {
     return <ProgramNotFound />
@@ -205,7 +205,7 @@ export default function Dashboard() {
           transition={{ delay: 0.2 }}
           className="flex items-center gap-2 sm:gap-3"
         >
-          <Button
+          {/* <Button
             variant="outline"
             size="sm"
             onClick={() => setShowFeedbackDialog(true)}
@@ -213,7 +213,7 @@ export default function Dashboard() {
           >
             <MessageSquare className="h-4 w-4" />
             <span className="hidden sm:inline">Feedback</span>
-          </Button>
+          </Button> */}
           <Button
             variant="outline"
             size="sm"
@@ -281,7 +281,7 @@ export default function Dashboard() {
       </Dialog>
 
       {/* Feedback Dialog */}
-      <Dialog open={showFeedbackDialog} onOpenChange={setShowFeedbackDialog}>
+      {/* <Dialog open={showFeedbackDialog} onOpenChange={setShowFeedbackDialog}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -353,7 +353,7 @@ export default function Dashboard() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog> */}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-6">
         <motion.div

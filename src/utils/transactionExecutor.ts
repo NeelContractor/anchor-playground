@@ -1,7 +1,7 @@
 import { TransactionResult } from "@/types";
 import { Program } from "@coral-xyz/anchor";
 import { IdlInstruction } from "@coral-xyz/anchor/dist/cjs/idl";
-import { Connection, PublicKey, Transaction, RpcResponseAndContext, SignatureResult } from "@solana/web3.js";
+import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 import { processInstructionArgs } from "./argProcessor";
 
 interface ExecuteTransactionParams {
@@ -15,7 +15,7 @@ interface ExecuteTransactionParams {
     transaction: Transaction,
     connection: Connection,
     options?: { skipPreflight?: boolean }
-  ) => Promise<string>;
+  ) => Promise<string>; 
   programTypes?: Array<{ name: string; type: unknown }>;
 }
 
@@ -30,11 +30,6 @@ export const executeTransaction = async ({
   programTypes,
 }: ExecuteTransactionParams): Promise<TransactionResult> => {
   try {
-    // Verify wallet is connected
-    if (!publicKey) {
-      throw new Error("Wallet not connected");
-    }
-
     // Process arguments
     const processedArgs = processInstructionArgs(instruction, args, programTypes);
     console.log("Final processed args:", processedArgs);
@@ -58,44 +53,58 @@ export const executeTransaction = async ({
 
     console.log("Accounts object:", accountsObject);
 
+    // ENHANCED: Verify accounts exist on-chain
+    console.log("Verifying accounts exist on-chain...");
+    for (const [name, pubkey] of Object.entries(accountsObject)) {
+      try {
+        const accountInfo = await connection.getAccountInfo(pubkey);
+        if (!accountInfo) {
+          console.warn(`⚠️  Account "${name}" (${pubkey.toBase58()}) does not exist on-chain!`);
+          console.warn(`   This may cause transaction simulation to fail`);
+        } else {
+          console.log(`✓ Account "${name}" exists, owner: ${accountInfo.owner.toBase58()}`);
+        }
+      } catch (err) {
+        console.error(`Error checking account "${name}":`, err);
+      }
+    }
+
+    // ENHANCED: Check wallet balance
+    const balance = await connection.getBalance(publicKey);
+    console.log(`Wallet balance: ${(balance / 1e9).toFixed(6)} SOL`);
+    
+    if (balance < 5000) { // 0.000005 SOL minimum for fees
+      throw new Error(
+        `Insufficient SOL balance for transaction fees. ` +
+        `Current balance: ${(balance / 1e9).toFixed(6)} SOL. ` +
+        `Please add some SOL to your wallet.`
+      );
+    }
+
     // Build transaction
     const transaction = await methodBuilder.accounts(accountsObject).transaction();
 
     // Get recent blockhash
     const { blockhash, lastValidBlockHeight } =
-      await connection.getLatestBlockhash("finalized");
-    
+      await connection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = publicKey;
 
     console.log("Transaction prepared, requesting wallet approval...");
 
-    // Send transaction (this will trigger wallet approval)
+    // Send transaction
     const txSignature = await sendTransaction(transaction, connection, {
       skipPreflight: false,
     });
 
     console.log("Transaction sent with signature:", txSignature);
 
-    // Confirm transaction with timeout
-    const confirmationPromise = connection.confirmTransaction(
-      {
-        signature: txSignature,
-        blockhash,
-        lastValidBlockHeight,
-      },
-      "confirmed"
-    );
-
-    // Add timeout to confirmation
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Transaction confirmation timeout")), 60000)
-    );
-
-    const confirmation: RpcResponseAndContext<SignatureResult> = await Promise.race([
-      confirmationPromise, 
-      timeoutPromise
-    ]);
+    // Confirm transaction
+    const confirmation = await connection.confirmTransaction({
+      signature: txSignature,
+      blockhash,
+      lastValidBlockHeight,
+    });
 
     if (confirmation.value.err) {
       throw new Error(
@@ -103,23 +112,41 @@ export const executeTransaction = async ({
       );
     }
 
-    console.log("Transaction confirmed successfully");
-
     return { signature: txSignature };
+  } catch (error: unknown) {
+    // Enhanced error logging
+    console.error("Transaction error details:", error);
     
-  } catch (error: any) {
-    // Handle specific wallet errors
-    if (error.message?.includes("Plugin Closed") || 
-        error.message?.includes("User rejected")) {
-      throw new Error("Transaction cancelled by user");
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorName = error instanceof Error ? error.name : '';
+    
+    // Check if user cancelled the transaction
+    if (
+      errorMessage.includes('User rejected') ||
+      errorMessage.includes('Transaction cancelled') ||
+      errorMessage.includes('Plugin Closed') ||
+      errorName === 'WalletSendTransactionError'
+    ) {
+      throw new Error('Transaction cancelled by user');
     }
     
-    if (error.message?.includes("Wallet not connected")) {
-      throw new Error("Please connect your wallet first");
+    // Check for simulation errors (-32002)
+    if (errorMessage.includes('-32002') || errorMessage.includes('simulation failed')) {
+      // Try to provide helpful context
+      const helpfulMessage = 
+        'Transaction simulation failed. Common causes:\n\n' +
+        '1. Account does not exist on this network\n' +
+        '2. Insufficient SOL balance for transaction fees\n' +
+        '3. Invalid account permissions or ownership\n' +
+        '4. Network mismatch (check your RPC endpoint)\n' +
+        '5. Program state not initialized\n\n' +
+        'Check the console logs above for account verification details.\n\n' +
+        `Original error: ${errorMessage}`;
+      
+      throw new Error(helpfulMessage);
     }
-
-    // Re-throw with more context
-    console.error("Transaction execution error:", error);
-    throw new Error(`Transaction failed: ${error.message || error}`);
+    
+    // Re-throw other errors
+    throw error;
   }
 };
